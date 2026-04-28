@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import api from "../../services/api";
@@ -61,66 +61,68 @@ export default function ProductDetailPage() {
 
   const [selected, setSelected] = useState<CalculationOption | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [successMessage, setSuccessMessage] = useState("");
 
   const productQuery = useQuery({
     queryKey: ["product", productId],
     queryFn: async () => {
-      const response = await api.get(`/Product/${productId}`);
-      return response.data.data as ProductDetail;
+      const res = await api.get(`/Product/${productId}`);
+      return res.data.data as ProductDetail;
     },
-    enabled: Number.isFinite(productId) && productId > 0
+    enabled: productId > 0
   });
 
   const routesQuery = useQuery({
     queryKey: ["routes", productId],
     queryFn: async () => {
-      const response = await api.get(`/Routes/${productId}`);
-      return response.data.data as RouteResponse;
+      const res = await api.get(`/Routes/${productId}`);
+      return res.data.data as RouteResponse;
     },
-    enabled: Number.isFinite(productId) && productId > 0
+    enabled: productId > 0
   });
 
   const routeOptions = useMemo(() => {
     const routes = routesQuery.data;
     if (!routes) return [];
 
+    // 🔥 düzgün sıra
     const options = [
       { option: routes.cheapest, highlight: "cheapest" as const },
-      { option: routes.fastest, highlight: "fastest" as const },
-      { option: routes.balanced, highlight: "balanced" as const }
+      { option: routes.balanced, highlight: "balanced" as const },
+      { option: routes.fastest, highlight: "fastest" as const }
     ];
 
-    const unique = new Map<
-      number,
-      {
-        option: CalculationOption;
-        highlight: "cheapest" | "fastest" | "balanced";
-      }
-    >();
+    const unique = new Map<number, any>();
 
     for (const item of options) {
       if (item.option && !unique.has(item.option.shippingOptionId)) {
-        unique.set(item.option.shippingOptionId, {
-          option: item.option,
-          highlight: item.highlight
-        });
+        unique.set(item.option.shippingOptionId, item);
       }
     }
 
     return Array.from(unique.values());
   }, [routesQuery.data]);
 
+  // 🔥 Balanced default seçilir
+  useEffect(() => {
+    if (!selected && routesQuery.data?.balanced) {
+      setSelected(routesQuery.data.balanced);
+    }
+  }, [routesQuery.data, selected]);
+
   const addToCart = useMutation({
     mutationFn: async () => {
-      if (!selected) {
-        throw new Error("Please select a shipping route.");
-      }
+      if (!selected) throw new Error("Select route");
 
       return api.post("/Cart/add-items", {
         productId,
         quantity,
         shippingOptionId: selected.shippingOptionId
       });
+    },
+    onSuccess: () => {
+      setSuccessMessage("Added to cart successfully 🎉");
+      setTimeout(() => setSuccessMessage(""), 3000);
     }
   });
 
@@ -132,7 +134,7 @@ export default function ProductDetailPage() {
     return (
       <EmptyState
         title="Product could not be loaded"
-        description="The product may not exist or the backend API is not reachable."
+        description="The product may not exist or backend is down."
       />
     );
   }
@@ -141,6 +143,7 @@ export default function ProductDetailPage() {
 
   return (
     <div className="space-y-10">
+      {/* TOP */}
       <div className="grid gap-8 lg:grid-cols-2">
         <Card className="overflow-hidden">
           {product.imageUrl ? (
@@ -151,77 +154,66 @@ export default function ProductDetailPage() {
             />
           ) : (
             <div className="flex h-[420px] items-center justify-center text-white/40">
-              No image available
+              No image
             </div>
           )}
         </Card>
 
         <div className="space-y-6">
           <div>
-            <p className="text-sm font-medium text-emerald-300">
+            <p className="text-sm text-emerald-300">
               {product.marketplace} • {product.category}
             </p>
 
-            <h1 className="mt-2 text-3xl font-bold leading-tight text-white md:text-4xl">
+            <h1 className="text-3xl font-bold text-white">
               {product.title}
             </h1>
 
             {product.description && (
-              <p className="mt-4 text-sm leading-6 text-white/60">
-                {product.description}
-              </p>
+              <p className="mt-3 text-white/60">{product.description}</p>
             )}
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-sm text-white/45">Product price</p>
-
-            <p className="mt-1 text-3xl font-bold text-emerald-300">
+          <Card className="p-5">
+            <p className="text-white/50">Product price</p>
+            <p className="text-3xl font-bold text-emerald-300">
               {product.price} {product.currency}
             </p>
 
-            <div className="mt-5 grid grid-cols-2 gap-3 text-sm text-white/60">
+            <div className="mt-4 text-sm text-white/60 grid grid-cols-2 gap-2">
               <div>Origin: {product.originCountry}</div>
               <div>Weight: {product.weightKg} kg</div>
-              <div>Category: {product.category}</div>
             </div>
-          </div>
+          </Card>
 
           <a
             href={product.affiliateUrl}
             target="_blank"
-            rel="noreferrer"
-            className="inline-flex rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+            className="inline-flex px-4 py-2 border rounded-xl text-white/70 hover:bg-white/10"
           >
             Open marketplace product
           </a>
         </div>
       </div>
 
-      <section className="space-y-5">
-        <div>
-          <p className="text-sm font-medium text-emerald-300">
-            Delivery routes
-          </p>
+      {/* ROUTES */}
+      <section>
+        <h2 className="text-2xl font-bold text-white mb-4">
+          Choose delivery route
+        </h2>
 
-          <h2 className="mt-1 text-2xl font-bold text-white">
-            Choose your preferred route
-          </h2>
-        </div>
-
-        {routesQuery.isError || routeOptions.length === 0 ? (
-          <EmptyState
-            title="No delivery routes found"
-            description="There are no active shipping options for this product yet."
-          />
+        {routeOptions.length === 0 ? (
+          <EmptyState title="No routes found" description="Try later." />
         ) : (
-          <div className="grid gap-5 md:grid-cols-3">
+          <div className="grid md:grid-cols-3 gap-5">
             {routeOptions.map(({ option, highlight }) => (
               <RouteCard
-                key={`${highlight}-${option.shippingOptionId}`}
+                key={option.shippingOptionId}
                 {...option}
                 highlight={highlight}
-                selected={selected?.shippingOptionId === option.shippingOptionId}
+                selected={
+                  selected?.shippingOptionId === option.shippingOptionId
+                }
                 onSelect={() => setSelected(option)}
               />
             ))}
@@ -229,6 +221,7 @@ export default function ProductDetailPage() {
         )}
       </section>
 
+      {/* PRICE */}
       {selected && (
         <PriceBreakdown
           productPrice={selected.productPrice}
@@ -240,17 +233,20 @@ export default function ProductDetailPage() {
         />
       )}
 
-      <Card className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+      {/* ADD */}
+      <Card className="flex flex-col md:flex-row justify-between gap-4 p-5">
         <div>
-          <h3 className="font-semibold text-white">Ready to add?</h3>
-
-          <p className="mt-1 text-sm text-white/55">
-            Select a route, choose quantity, and add the item to your cart.
-          </p>
+          <p className="text-white font-semibold">Ready to order?</p>
 
           {!isAuthenticated && (
-            <p className="mt-2 text-sm text-yellow-300">
-              You must login before adding this product to cart.
+            <p className="text-yellow-300 text-sm">
+              Login required
+            </p>
+          )}
+
+          {successMessage && (
+            <p className="text-green-400 text-sm mt-2">
+              {successMessage}
             </p>
           )}
         </div>
@@ -260,23 +256,21 @@ export default function ProductDetailPage() {
             type="number"
             min={1}
             value={quantity}
-            onChange={(event) =>
-              setQuantity(Math.max(1, Number(event.target.value) || 1))
+            onChange={(e) =>
+              setQuantity(Math.max(1, Number(e.target.value)))
             }
-            className="w-20 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white outline-none focus:border-emerald-400"
+            className="w-20 px-3 py-2 bg-white/5 text-white border rounded-xl"
           />
 
           {!isAuthenticated ? (
             <Link
               to="/login"
-              className="rounded-xl bg-emerald-400 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-300"
+              className="px-4 py-2 bg-emerald-400 rounded-xl text-black"
             >
-              Login to add
+              Login
             </Link>
           ) : (
             <Button
-              type="button"
-              variant="primary"
               disabled={!selected}
               loading={addToCart.isPending}
               onClick={() => addToCart.mutate()}

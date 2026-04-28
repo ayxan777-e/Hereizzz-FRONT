@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import Badge from "../ui/Badge";
 import Card from "../ui/Card";
@@ -21,19 +22,24 @@ export default function ProductCard({
   category,
   imageUrl
 }: ProductCardProps) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  const showImage = imageUrl && !imageFailed;
+
   return (
     <Link to={`/products/${id}`} className="block h-full">
       <Card className="group flex h-full flex-col overflow-hidden transition hover:-translate-y-1 hover:border-emerald-400/40 hover:bg-white/[0.07]">
         <div className="h-44 w-full overflow-hidden bg-white/10">
-          {imageUrl ? (
+          {showImage ? (
             <img
               src={imageUrl}
               alt={title}
+              onError={() => setImageFailed(true)}
               className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-sm text-white/40">
-              No image
+              No image available
             </div>
           )}
         </div>
